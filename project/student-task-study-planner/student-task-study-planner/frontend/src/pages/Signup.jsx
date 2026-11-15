@@ -10,6 +10,7 @@ export default function Signup() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
+  const [autoVerified, setAutoVerified] = useState(false);
   const [submittedEmail, setSubmittedEmail] = useState("");
 
   function change(e) { setForm((f) => ({ ...f, [e.target.name]: e.target.value })); }
@@ -21,8 +22,11 @@ export default function Signup() {
     if (form.password.length < 6) return setError("Password must be at least 6 characters.");
     setLoading(true);
     try {
-      await api.register({ name: form.name, email: form.email, password: form.password });
+      const data = await api.register({ name: form.name, email: form.email, password: form.password });
       setSubmittedEmail(form.email);
+      if (data?.autoVerified) {
+        setAutoVerified(true);
+      }
       setDone(true);
     } catch (err) {
       setError(err.message);
@@ -37,15 +41,27 @@ export default function Signup() {
             <BookOpen size={28} /><span>study<span className="brand-accent">flow</span></span>
           </div>
           <CheckCircle2 size={56} style={{ color: "#4caa84", display: "block", margin: "8px auto 16px" }} />
-          <h1 className="auth-title">Check your inbox! 📬</h1>
+          <h1 className="auth-title">
+            {autoVerified ? "Account Verified! 🎉" : "Check your inbox! 📬"}
+          </h1>
           <p className="auth-subtitle">
-            We've sent a verification email to <strong>{submittedEmail}</strong>.
-            <br />Click the link in the email to activate your account.
+            {autoVerified ? (
+              <>
+                Welcome to StudyFlow, <strong>{form.name}</strong>! Your account has been verified and is ready to use.
+              </>
+            ) : (
+              <>
+                We've sent a verification email to <strong>{submittedEmail}</strong>.
+                <br />Click the link in the email to activate your account.
+              </>
+            )}
           </p>
-          <p style={{ fontSize: 12, color: "#9292a5", marginTop: 8, lineHeight: 1.6 }}>
-            Didn't receive it? Check your spam folder.
-            <br />The link expires in 24 hours.
-          </p>
+          {!autoVerified && (
+            <p style={{ fontSize: 12, color: "#9292a5", marginTop: 8, lineHeight: 1.6 }}>
+              Didn't receive it? Check your spam folder.
+              <br />The link expires in 24 hours.
+            </p>
+          )}
           <button className="auth-submit" style={{ marginTop: 24 }} onClick={() => navigate("/")}>
             Go to Login
           </button>

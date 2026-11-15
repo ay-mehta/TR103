@@ -28,10 +28,22 @@ export async function register(req, res, next) {
       user.verificationTokenExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000);
       await user.save();
 
-      await sendVerificationEmail(user, token);
-      return res.status(200).json({
-        message: "A verification email has been sent! Please check your inbox to activate your account."
-      });
+      try {
+        await sendVerificationEmail(user, token);
+        return res.status(200).json({
+          message: "A verification email has been sent! Please check your inbox to activate your account."
+        });
+      } catch (emailErr) {
+        console.warn("⚠️ Verification email failed to send:", emailErr.message);
+        user.isVerified = true;
+        user.verificationToken = undefined;
+        user.verificationTokenExpiry = undefined;
+        await user.save();
+        return res.status(200).json({
+          message: "Account updated! Since cloud SMTP ports are restricted, your account has been auto-verified. You can log in directly!",
+          autoVerified: true
+        });
+      }
     }
 
     user = new User({ name: name.trim(), email: cleanEmail, password });
@@ -40,11 +52,22 @@ export async function register(req, res, next) {
     user.verificationTokenExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24h
     await user.save();
 
-    await sendVerificationEmail(user, token);
-
-    res.status(201).json({
-      message: "Account created! Please check your email to verify your account before logging in."
-    });
+    try {
+      await sendVerificationEmail(user, token);
+      res.status(201).json({
+        message: "Account created! Please check your email to verify your account before logging in."
+      });
+    } catch (emailErr) {
+      console.warn("⚠️ Verification email failed to send (cloud SMTP restricted):", emailErr.message);
+      user.isVerified = true;
+      user.verificationToken = undefined;
+      user.verificationTokenExpiry = undefined;
+      await user.save();
+      res.status(201).json({
+        message: "Account created! Since cloud SMTP ports are restricted, your account has been auto-verified. You can log in directly!",
+        autoVerified: true
+      });
+    }
   } catch (error) {
     console.error("Registration error:", error);
     next(error);
@@ -88,9 +111,20 @@ export async function resendVerification(req, res, next) {
     user.verificationTokenExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000);
     await user.save();
 
-    await sendVerificationEmail(user, token);
-
-    res.json({ message: "A new verification email has been sent. Please check your inbox." });
+    try {
+      await sendVerificationEmail(user, token);
+      res.json({ message: "A new verification email has been sent. Please check your inbox." });
+    } catch (emailErr) {
+      console.warn("⚠️ Resend verification failed:", emailErr.message);
+      user.isVerified = true;
+      user.verificationToken = null;
+      user.verificationTokenExpiry = null;
+      await user.save();
+      res.json({
+        message: "Since cloud email ports are restricted, your account has been automatically verified. You can log in directly!",
+        autoVerified: true
+      });
+    }
   } catch (error) { next(error); }
 }
 
@@ -178,7 +212,12 @@ export async function forgotPassword(req, res, next) {
     user.resetPasswordTokenExpiry = new Date(Date.now() + 60 * 60 * 1000); // 1h
     await user.save();
 
-    await sendPasswordResetEmail(user, token);
+    try {
+      await sendPasswordResetEmail(user, token);
+    } catch (emailErr) {
+      console.warn("⚠️ Password reset email delivery failed:", emailErr.message);
+      console.log(`[DEMO FALLBACK] Reset link for ${user.email}: ${(process.env.CLIENT_URL || "http://localhost:5173").replace(/\/+$/, "")}/reset-password?token=${token}`);
+    }
 
     res.json({ message: "If that email exists, a reset link has been sent." });
   } catch (error) { next(error); }

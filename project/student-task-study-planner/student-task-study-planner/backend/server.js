@@ -42,8 +42,9 @@ app.use(errorHandler);
 const PORT = process.env.PORT || 5000;
 try {
   await connectDB();
-  await verifyMailer();
   app.listen(PORT, () => console.log(`API running at http://localhost:${PORT}`));
+  // Run mailer check in background without blocking server port binding
+  verifyMailer().catch((err) => console.warn("Mailer background check:", err.message));
 } catch (error) {
   console.error("Could not start server.", error.message);
   process.exit(1);

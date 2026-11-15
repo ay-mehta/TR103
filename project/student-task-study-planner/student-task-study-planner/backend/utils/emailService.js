@@ -9,8 +9,36 @@ function getTransporter() {
 
   return nodemailer.createTransport({
     service: "gmail",
-    auth: { user, pass }
+    auth: { user, pass },
+    connectionTimeout: 5000,
+    greetingTimeout: 5000,
+    socketTimeout: 7000
   });
+}
+
+async function sendViaResend(to, subject, html) {
+  const apiKey = process.env.RESEND_API_KEY?.trim();
+  if (!apiKey) return null;
+
+  const res = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      from: process.env.RESEND_FROM || "StudyFlow <onboarding@resend.dev>",
+      to: [to],
+      subject,
+      html
+    })
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data.message || `Resend error HTTP ${res.status}`);
+  }
+  return data;
 }
 
 function getFromAddress() {
@@ -60,20 +88,31 @@ function shell(title, body) {
 // ── Send verification email ─────────────────────────────────────────────────
 export async function sendVerificationEmail(user, token) {
   const link = `${getClientUrl()}/verify-email?token=${token}`;
-  const transporter = getTransporter();
-  
+  const subject = "✅ Verify your StudyFlow account";
+  const html = shell(
+    `Hi ${user.name}, please verify your email`,
+    `<p>Thanks for signing up! Click the button below to activate your StudyFlow account. This link expires in <strong>24 hours</strong>.</p>
+     <a href="${link}" class="btn">Verify my account</a>
+     <p class="note">If the button doesn't work, copy this link:<br/><a href="${link}">${link}</a></p>
+     <p class="note">If you didn't create an account, you can safely ignore this email.</p>`
+  );
+
   console.log(`[Email] Sending verification email to ${user.email}...`);
+
+  // Check if Resend HTTPS API is configured (works on any cloud host without SMTP port blocks)
+  if (process.env.RESEND_API_KEY) {
+    const resendRes = await sendViaResend(user.email, subject, html);
+    console.log(`[Email] Verification email sent via Resend API to ${user.email}`);
+    return resendRes;
+  }
+
+  // Fallback to Nodemailer SMTP
+  const transporter = getTransporter();
   const info = await transporter.sendMail({
     from: getFromAddress(),
     to: user.email,
-    subject: "✅ Verify your StudyFlow account",
-    html: shell(
-      `Hi ${user.name}, please verify your email`,
-      `<p>Thanks for signing up! Click the button below to activate your StudyFlow account. This link expires in <strong>24 hours</strong>.</p>
-       <a href="${link}" class="btn">Verify my account</a>
-       <p class="note">If the button doesn't work, copy this link:<br/><a href="${link}">${link}</a></p>
-       <p class="note">If you didn't create an account, you can safely ignore this email.</p>`
-    )
+    subject,
+    html
   });
   console.log(`[Email] Verification email sent successfully to ${user.email} (MessageId: ${info.messageId})`);
   return info;
@@ -82,21 +121,30 @@ export async function sendVerificationEmail(user, token) {
 // ── Send password reset email ───────────────────────────────────────────────
 export async function sendPasswordResetEmail(user, token) {
   const link = `${getClientUrl()}/reset-password?token=${token}`;
-  const transporter = getTransporter();
+  const subject = "🔑 Reset your StudyFlow password";
+  const html = shell(
+    `Password reset request`,
+    `<p>Hi <strong>${user.name}</strong>, we received a request to reset your password.</p>
+     <p>Click the button below. This link expires in <strong>1 hour</strong>.</p>
+     <a href="${link}" class="btn">Reset my password</a>
+     <p class="note">If the button doesn't work, copy this link:<br/><a href="${link}">${link}</a></p>
+     <p class="note">If you didn't request a password reset, you can safely ignore this email — your password won't change.</p>`
+  );
 
   console.log(`[Email] Sending password reset email to ${user.email}...`);
+
+  if (process.env.RESEND_API_KEY) {
+    const resendRes = await sendViaResend(user.email, subject, html);
+    console.log(`[Email] Password reset email sent via Resend API to ${user.email}`);
+    return resendRes;
+  }
+
+  const transporter = getTransporter();
   const info = await transporter.sendMail({
     from: getFromAddress(),
     to: user.email,
-    subject: "🔑 Reset your StudyFlow password",
-    html: shell(
-      `Password reset request`,
-      `<p>Hi <strong>${user.name}</strong>, we received a request to reset your password.</p>
-       <p>Click the button below. This link expires in <strong>1 hour</strong>.</p>
-       <a href="${link}" class="btn">Reset my password</a>
-       <p class="note">If the button doesn't work, copy this link:<br/><a href="${link}">${link}</a></p>
-       <p class="note">If you didn't request a password reset, you can safely ignore this email — your password won't change.</p>`
-    )
+    subject,
+    html
   });
   console.log(`[Email] Password reset email sent successfully to ${user.email} (MessageId: ${info.messageId})`);
   return info;
