@@ -16,6 +16,24 @@ function getTransporter() {
   });
 }
 
+async function sendViaGoogleScript(to, subject, html) {
+  const scriptUrl = process.env.GOOGLE_SCRIPT_URL?.trim();
+  if (!scriptUrl) return null;
+
+  const res = await fetch(scriptUrl, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify({ to, subject, html }),
+    redirect: "follow"
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (data?.status === "error") {
+    throw new Error(data.message || "Google Script mail error");
+  }
+  return data;
+}
+
 async function sendViaBrevo(toEmail, toName, subject, html) {
   const apiKey = process.env.BREVO_API_KEY?.trim();
   if (!apiKey) return null;
@@ -129,14 +147,21 @@ export async function sendVerificationEmail(user, token) {
 
   console.log(`[Email] Sending verification email to ${user.email}...`);
 
-  // 1. Try Brevo HTTPS API (port 443, free 300 emails/day to ANY address)
+  // 1. Try Google Apps Script Webhook (Zero signup, sends from your real Gmail via HTTPS)
+  if (process.env.GOOGLE_SCRIPT_URL) {
+    const gRes = await sendViaGoogleScript(user.email, subject, html);
+    console.log(`[Email] Verification email sent via Google Script to ${user.email}`);
+    return gRes;
+  }
+
+  // 2. Try Brevo HTTPS API (port 443)
   if (process.env.BREVO_API_KEY) {
     const brevoRes = await sendViaBrevo(user.email, user.name, subject, html);
     console.log(`[Email] Verification email sent via Brevo API to ${user.email}`);
     return brevoRes;
   }
 
-  // 2. Try Resend HTTPS API (port 443)
+  // 3. Try Resend HTTPS API (port 443)
   if (process.env.RESEND_API_KEY) {
     const resendRes = await sendViaResend(user.email, subject, html);
     console.log(`[Email] Verification email sent via Resend API to ${user.email}`);
@@ -170,14 +195,21 @@ export async function sendPasswordResetEmail(user, token) {
 
   console.log(`[Email] Sending password reset email to ${user.email}...`);
 
-  // 1. Try Brevo HTTPS API (port 443, free 300 emails/day to ANY address)
+  // 1. Try Google Apps Script Webhook (Zero signup, sends from your real Gmail via HTTPS)
+  if (process.env.GOOGLE_SCRIPT_URL) {
+    const gRes = await sendViaGoogleScript(user.email, subject, html);
+    console.log(`[Email] Password reset email sent via Google Script to ${user.email}`);
+    return gRes;
+  }
+
+  // 2. Try Brevo HTTPS API (port 443)
   if (process.env.BREVO_API_KEY) {
     const brevoRes = await sendViaBrevo(user.email, user.name, subject, html);
     console.log(`[Email] Password reset email sent via Brevo API to ${user.email}`);
     return brevoRes;
   }
 
-  // 2. Try Resend HTTPS API (port 443)
+  // 3. Try Resend HTTPS API (port 443)
   if (process.env.RESEND_API_KEY) {
     const resendRes = await sendViaResend(user.email, subject, html);
     console.log(`[Email] Password reset email sent via Resend API to ${user.email}`);
