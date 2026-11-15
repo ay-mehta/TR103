@@ -67,6 +67,45 @@ app.get("/", (req, res) => {
 app.get("/api/health", (req, res) => {
   res.json({ status: "ok", database: "connected" });
 });
+
+// Diagnostic endpoint to check mail service status
+app.get("/api/debug-mail", async (req, res) => {
+  const scriptUrl = process.env.GOOGLE_SCRIPT_URL;
+  if (!scriptUrl) {
+    return res.json({
+      configured: false,
+      message: "GOOGLE_SCRIPT_URL is NOT set in Render environment variables!",
+      brevo: process.env.BREVO_API_KEY ? "set" : "not set",
+      resend: process.env.RESEND_API_KEY ? "set" : "not set"
+    });
+  }
+
+  try {
+    const testRes = await fetch(scriptUrl, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({
+        to: "mehtaayush141106@gmail.com",
+        subject: "StudyFlow Mailer Test",
+        html: "<p>Test email from StudyFlow</p>"
+      }),
+      redirect: "follow"
+    });
+
+    const text = await testRes.text();
+    return res.json({
+      configured: true,
+      urlPrefix: scriptUrl.slice(0, 40) + "...",
+      httpStatus: testRes.status,
+      rawResponse: text.slice(0, 300)
+    });
+  } catch (err) {
+    return res.json({
+      configured: true,
+      error: err.message
+    });
+  }
+});
 app.use("/api/auth", authRoutes);
 app.use("/api/tasks", taskRoutes);
 app.use(errorHandler);
