@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { API_URL } from "../api";
 
 const AuthContext = createContext(null);
 
@@ -10,7 +11,7 @@ export function AuthProvider({ children }) {
   // Validate stored token on mount
   useEffect(() => {
     if (!token) { setLoading(false); return; }
-    fetch(`${import.meta.env.VITE_API_URL || "http://localhost:5000/api"}/auth/me`, {
+    fetch(`${API_URL}/auth/me`, {
       headers: { Authorization: `Bearer ${token}` }
     })
       .then((r) => r.json())

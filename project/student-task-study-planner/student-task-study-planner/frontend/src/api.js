@@ -1,4 +1,13 @@
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+let rawUrl = (import.meta.env.VITE_API_URL || "").trim().replace(/\/+$/, "");
+if (rawUrl && !rawUrl.endsWith("/api")) {
+  rawUrl = `${rawUrl}/api`;
+}
+
+export const API_URL =
+  rawUrl ||
+  (import.meta.env.PROD
+    ? "https://study-planner-gal1.onrender.com/api"
+    : "http://localhost:5000/api");
 
 function getToken() {
   return localStorage.getItem("sp_token");
