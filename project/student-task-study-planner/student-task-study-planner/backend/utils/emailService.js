@@ -16,6 +16,36 @@ function getTransporter() {
   });
 }
 
+async function sendViaBrevo(toEmail, toName, subject, html) {
+  const apiKey = process.env.BREVO_API_KEY?.trim();
+  if (!apiKey) return null;
+
+  const senderEmail = process.env.EMAIL_USER?.trim() || "mehtaayush141106@gmail.com";
+  const res = await fetch("https://api.brevo.com/v3/smtp/email", {
+    method: "POST",
+    headers: {
+      accept: "application/json",
+      "api-key": apiKey,
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({
+      sender: {
+        name: "StudyFlow",
+        email: senderEmail
+      },
+      to: [{ email: toEmail, name: toName || toEmail }],
+      subject,
+      htmlContent: html
+    })
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data.message || `Brevo error HTTP ${res.status}`);
+  }
+  return data;
+}
+
 async function sendViaResend(to, subject, html) {
   const apiKey = process.env.RESEND_API_KEY?.trim();
   if (!apiKey) return null;
@@ -99,7 +129,14 @@ export async function sendVerificationEmail(user, token) {
 
   console.log(`[Email] Sending verification email to ${user.email}...`);
 
-  // Check if Resend HTTPS API is configured (works on any cloud host without SMTP port blocks)
+  // 1. Try Brevo HTTPS API (port 443, free 300 emails/day to ANY address)
+  if (process.env.BREVO_API_KEY) {
+    const brevoRes = await sendViaBrevo(user.email, user.name, subject, html);
+    console.log(`[Email] Verification email sent via Brevo API to ${user.email}`);
+    return brevoRes;
+  }
+
+  // 2. Try Resend HTTPS API (port 443)
   if (process.env.RESEND_API_KEY) {
     const resendRes = await sendViaResend(user.email, subject, html);
     console.log(`[Email] Verification email sent via Resend API to ${user.email}`);
@@ -133,6 +170,14 @@ export async function sendPasswordResetEmail(user, token) {
 
   console.log(`[Email] Sending password reset email to ${user.email}...`);
 
+  // 1. Try Brevo HTTPS API (port 443, free 300 emails/day to ANY address)
+  if (process.env.BREVO_API_KEY) {
+    const brevoRes = await sendViaBrevo(user.email, user.name, subject, html);
+    console.log(`[Email] Password reset email sent via Brevo API to ${user.email}`);
+    return brevoRes;
+  }
+
+  // 2. Try Resend HTTPS API (port 443)
   if (process.env.RESEND_API_KEY) {
     const resendRes = await sendViaResend(user.email, subject, html);
     console.log(`[Email] Password reset email sent via Resend API to ${user.email}`);

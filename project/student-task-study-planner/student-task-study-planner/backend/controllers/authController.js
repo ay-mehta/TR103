@@ -212,14 +212,27 @@ export async function forgotPassword(req, res, next) {
     user.resetPasswordTokenExpiry = new Date(Date.now() + 60 * 60 * 1000); // 1h
     await user.save();
 
+    let emailSent = false;
     try {
       await sendPasswordResetEmail(user, token);
+      emailSent = true;
     } catch (emailErr) {
       console.warn("⚠️ Password reset email delivery failed:", emailErr.message);
-      console.log(`[DEMO FALLBACK] Reset link for ${user.email}: ${(process.env.CLIENT_URL || "http://localhost:5173").replace(/\/+$/, "")}/reset-password?token=${token}`);
     }
 
-    res.json({ message: "If that email exists, a reset link has been sent." });
+    const clientUrl = (process.env.CLIENT_URL || "http://localhost:5173").replace(/\/+$/, "");
+    const resetLink = `${clientUrl}/reset-password?token=${token}`;
+
+    if (!emailSent) {
+      console.log(`[DEMO FALLBACK] Reset link for ${user.email}: ${resetLink}`);
+      return res.json({
+        message: "If that email exists, a reset link has been sent.",
+        resetLink,
+        emailSent: false
+      });
+    }
+
+    res.json({ message: "If that email exists, a reset link has been sent.", emailSent: true });
   } catch (error) { next(error); }
 }
 
