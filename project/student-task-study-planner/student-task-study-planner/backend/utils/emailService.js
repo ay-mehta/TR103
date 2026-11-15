@@ -104,8 +104,16 @@ function getFromAddress() {
   return process.env.EMAIL_FROM || `"StudyFlow" <${process.env.EMAIL_USER?.trim()}>`;
 }
 
-function getClientUrl() {
-  return process.env.CLIENT_URL || "http://localhost:5173";
+export function getClientUrl() {
+  let url = (process.env.CLIENT_URL || "http://localhost:5173").trim().replace(/\/+$/, "");
+  if (url === "*" || url === "http://*" || url === "https://*") {
+    console.warn("⚠️ CLIENT_URL is set to '*'! Please set CLIENT_URL in Render to your actual Netlify URL (e.g. https://<site>.netlify.app).");
+    return "http://localhost:5173";
+  }
+  if (!url.startsWith("http://") && !url.startsWith("https://")) {
+    url = `https://${url}`;
+  }
+  return url;
 }
 
 // ── Shared email shell ──────────────────────────────────────────────────────

@@ -1,6 +1,6 @@
 import jwt from "jsonwebtoken";
 import User from "../models/User.js";
-import { sendVerificationEmail, sendPasswordResetEmail } from "../utils/emailService.js";
+import { sendVerificationEmail, sendPasswordResetEmail, getClientUrl } from "../utils/emailService.js";
 
 function generateJWT(id) {
   return jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: "7d" });
@@ -220,7 +220,7 @@ export async function forgotPassword(req, res, next) {
       console.warn("⚠️ Password reset email delivery failed:", emailErr.message);
     }
 
-    const clientUrl = (process.env.CLIENT_URL || "http://localhost:5173").replace(/\/+$/, "");
+    const clientUrl = getClientUrl();
     const resetLink = `${clientUrl}/reset-password?token=${token}`;
 
     if (!emailSent) {
