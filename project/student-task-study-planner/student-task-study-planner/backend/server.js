@@ -70,41 +70,61 @@ app.get("/api/health", (req, res) => {
 
 // Diagnostic endpoint to check mail service status
 app.get("/api/debug-mail", async (req, res) => {
-  const scriptUrl = process.env.GOOGLE_SCRIPT_URL;
-  if (!scriptUrl) {
-    return res.json({
-      configured: false,
-      message: "GOOGLE_SCRIPT_URL is NOT set in Render environment variables!",
-      brevo: process.env.BREVO_API_KEY ? "set" : "not set",
-      resend: process.env.RESEND_API_KEY ? "set" : "not set"
-    });
+  const resendKey = process.env.RESEND_API_KEY?.trim();
+  const scriptUrl = process.env.GOOGLE_SCRIPT_URL?.trim();
+
+  // 1. If Resend is configured, test Resend
+  if (resendKey) {
+    try {
+      const rRes = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${resendKey}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          from: "StudyFlow <onboarding@resend.dev>",
+          to: ["mehtaayush141106@gmail.com"],
+          subject: "StudyFlow Test Email",
+          html: "<h3>✅ Success!</h3><p>Your StudyFlow email service is working perfectly on Render via Resend.</p>"
+        })
+      });
+      const data = await rRes.json().catch(() => ({}));
+      return res.json({ provider: "resend", httpStatus: rRes.status, result: data });
+    } catch (err) {
+      return res.json({ provider: "resend", error: err.message });
+    }
   }
 
-  try {
-    const testRes = await fetch(scriptUrl, {
-      method: "POST",
-      headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify({
-        to: "mehtaayush141106@gmail.com",
-        subject: "StudyFlow Mailer Test",
-        html: "<p>Test email from StudyFlow</p>"
-      }),
-      redirect: "follow"
-    });
+  // 2. If Google Script is configured
+  if (scriptUrl) {
+    try {
+      const testRes = await fetch(scriptUrl, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({
+          to: "mehtaayush141106@gmail.com",
+          subject: "StudyFlow Mailer Test",
+          html: "<p>Test email from StudyFlow</p>"
+        }),
+        redirect: "follow"
+      });
 
-    const text = await testRes.text();
-    return res.json({
-      configured: true,
-      urlPrefix: scriptUrl.slice(0, 40) + "...",
-      httpStatus: testRes.status,
-      rawResponse: text.slice(0, 300)
-    });
-  } catch (err) {
-    return res.json({
-      configured: true,
-      error: err.message
-    });
+      const text = await testRes.text();
+      return res.json({
+        provider: "google-script",
+        httpStatus: testRes.status,
+        rawResponse: text.slice(0, 300)
+      });
+    } catch (err) {
+      return res.json({ provider: "google-script", error: err.message });
+    }
   }
+
+  return res.json({
+    configured: false,
+    message: "No email provider configured. Add RESEND_API_KEY in Render."
+  });
 });
 app.use("/api/auth", authRoutes);
 app.use("/api/tasks", taskRoutes);
