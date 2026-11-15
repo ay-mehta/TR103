@@ -27,10 +27,21 @@ async function sendViaGoogleScript(to, subject, html) {
     redirect: "follow"
   });
 
-  const data = await res.json().catch(() => ({}));
+  const text = await res.text();
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch (e) {
+    if (text.includes("accounts.google.com") || text.includes("<html")) {
+      throw new Error("Google Script is requiring login. In Google Script, click Deploy -> Manage Deployments -> Edit -> set 'Who has access' to 'Anyone'");
+    }
+    throw new Error(`Google Script returned invalid response: ${text.slice(0, 100)}`);
+  }
+
   if (data?.status === "error") {
     throw new Error(data.message || "Google Script mail error");
   }
+  console.log(`[Google Script] Email successfully sent to ${to}:`, data);
   return data;
 }
 
@@ -229,6 +240,19 @@ export async function sendPasswordResetEmail(user, token) {
 
 // ── Verify transporter (called at server start) ─────────────────────────────
 export async function verifyMailer() {
+  if (process.env.GOOGLE_SCRIPT_URL) {
+    console.log("✉️  Email service active via Google Apps Script Webhook");
+    return true;
+  }
+  if (process.env.BREVO_API_KEY) {
+    console.log("✉️  Email service active via Brevo HTTPS API");
+    return true;
+  }
+  if (process.env.RESEND_API_KEY) {
+    console.log("✉️  Email service active via Resend HTTPS API");
+    return true;
+  }
+
   const user = process.env.EMAIL_USER?.trim();
   const pass = process.env.EMAIL_PASS?.replace(/\s+/g, "");
 
@@ -239,7 +263,7 @@ export async function verifyMailer() {
   try {
     const transporter = getTransporter();
     await transporter.verify();
-    console.log(`✉️  Email service ready & verified (${user})`);
+    console.log(`✉️  Email service ready & verified via Nodemailer (${user})`);
     return true;
   } catch (err) {
     console.warn("⚠️  Email transporter error:", err.message);
