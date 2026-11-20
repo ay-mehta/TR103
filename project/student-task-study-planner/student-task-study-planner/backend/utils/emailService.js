@@ -20,32 +20,59 @@ async function sendViaGoogleScript(to, subject, html) {
   const scriptUrl = process.env.GOOGLE_SCRIPT_URL?.trim();
   if (!scriptUrl) return null;
 
-  const res = await fetch(scriptUrl, {
-    method: "POST",
-    headers: {
-      "Content-Type": "text/plain;charset=utf-8",
-      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-    },
-    body: JSON.stringify({ to, subject, html }),
-    redirect: "follow"
-  });
-
-  const text = await res.text();
-  let data;
+  // 1. Try POST with text/plain body
   try {
-    data = JSON.parse(text);
-  } catch (e) {
-    if (text.includes("accounts.google.com") || text.includes("<html")) {
-      throw new Error("Google Script is requiring login. In Google Script, click Deploy -> Manage Deployments -> Edit -> set 'Who has access' to 'Anyone'");
+    const res = await fetch(scriptUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "text/plain;charset=utf-8",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+      },
+      body: JSON.stringify({ to, subject, html }),
+      redirect: "follow"
+    });
+
+    const text = await res.text();
+    let data;
+    try { data = JSON.parse(text); } catch {}
+    if (data && (data.status === "success" || data.ok)) {
+      console.log(`[Google Script] POST email delivered to ${to}`);
+      return data;
     }
-    throw new Error(`Google Script returned invalid response: ${text.slice(0, 100)}`);
+  } catch (err) {
+    console.warn("⚠️ Google Script POST attempt failed, trying GET fallback:", err.message);
   }
 
-  if (data?.status === "error") {
-    throw new Error(data.message || "Google Script mail error");
+  // 2. Try GET with query parameters (bypasses 302 payload-dropping redirect)
+  try {
+    const getUrl = new URL(scriptUrl);
+    getUrl.searchParams.set("to", to);
+    getUrl.searchParams.set("subject", subject);
+    getUrl.searchParams.set("html", html);
+
+    const getRes = await fetch(getUrl.toString(), {
+      method: "GET",
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+      },
+      redirect: "follow"
+    });
+
+    const getText = await getRes.text();
+    let getData;
+    try { getData = JSON.parse(getText); } catch {}
+    if (getData && (getData.status === "success" || getData.ok)) {
+      console.log(`[Google Script] GET email delivered to ${to}`);
+      return getData;
+    }
+
+    if (getText.includes("accounts.google.com") || getText.includes("<html")) {
+      throw new Error("Google Script is requiring login. In Google Script: Deploy -> Manage Deployments -> Edit -> set 'Who has access' to 'Anyone'");
+    }
+    throw new Error(`Google Script returned: ${getText.slice(0, 100)}`);
+  } catch (err) {
+    throw new Error(`Google Script error: ${err.message}`);
   }
-  console.log(`[Google Script] Email successfully sent to ${to}:`, data);
-  return data;
 }
 
 async function sendViaBrevo(toEmail, toName, subject, html) {
