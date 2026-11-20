@@ -22,7 +22,10 @@ async function sendViaGoogleScript(to, subject, html) {
 
   const res = await fetch(scriptUrl, {
     method: "POST",
-    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    headers: {
+      "Content-Type": "text/plain;charset=utf-8",
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    },
     body: JSON.stringify({ to, subject, html }),
     redirect: "follow"
   });
@@ -152,6 +155,65 @@ function shell(title, body) {
   </html>`;
 }
 
+// ── Unified Email Pipeline with Resend Priority & Automatic Fallback ───────
+async function sendMailPipeline({ to, name, subject, html }) {
+  let lastError = null;
+
+  // 1. Primary: Try Resend HTTPS API (port 443)
+  if (process.env.RESEND_API_KEY) {
+    try {
+      const resendRes = await sendViaResend(to, subject, html);
+      console.log(`[Email] Successfully delivered via Resend API to ${to}`);
+      return resendRes;
+    } catch (err) {
+      console.warn(`⚠️ Resend API failed for ${to}:`, err.message);
+      lastError = err;
+    }
+  }
+
+  // 2. Secondary: Try Google Apps Script Webhook
+  if (process.env.GOOGLE_SCRIPT_URL) {
+    try {
+      const gRes = await sendViaGoogleScript(to, subject, html);
+      console.log(`[Email] Successfully delivered via Google Script to ${to}`);
+      return gRes;
+    } catch (err) {
+      console.warn(`⚠️ Google Script failed for ${to}:`, err.message);
+      lastError = err;
+    }
+  }
+
+  // 3. Tertiary: Try Brevo HTTPS API (port 443)
+  if (process.env.BREVO_API_KEY) {
+    try {
+      const brevoRes = await sendViaBrevo(to, name, subject, html);
+      console.log(`[Email] Successfully delivered via Brevo API to ${to}`);
+      return brevoRes;
+    } catch (err) {
+      console.warn(`⚠️ Brevo API failed for ${to}:`, err.message);
+      lastError = err;
+    }
+  }
+
+  // 4. Fallback: Nodemailer SMTP
+  try {
+    const transporter = getTransporter();
+    const info = await transporter.sendMail({
+      from: getFromAddress(),
+      to,
+      subject,
+      html
+    });
+    console.log(`[Email] Delivered via Nodemailer SMTP to ${to} (MessageId: ${info.messageId})`);
+    return info;
+  } catch (err) {
+    console.warn(`⚠️ Nodemailer SMTP failed for ${to}:`, err.message);
+    lastError = err;
+  }
+
+  throw lastError || new Error("All configured email providers failed to deliver.");
+}
+
 // ── Send verification email ─────────────────────────────────────────────────
 export async function sendVerificationEmail(user, token) {
   const link = `${getClientUrl()}/verify-email?token=${token}`;
@@ -165,39 +227,8 @@ export async function sendVerificationEmail(user, token) {
      <p class="note">If you did not sign up for StudyFlow, you can safely ignore this email. No account will be created without setting a password.</p>`
   );
 
-  console.log(`[Email] Sending activation/verification email to ${user.email}...`);
-
-  // 1. Try Google Apps Script Webhook (Zero signup, sends from your real Gmail via HTTPS)
-  if (process.env.GOOGLE_SCRIPT_URL) {
-    const gRes = await sendViaGoogleScript(user.email, subject, html);
-    console.log(`[Email] Verification email sent via Google Script to ${user.email}`);
-    return gRes;
-  }
-
-  // 2. Try Brevo HTTPS API (port 443)
-  if (process.env.BREVO_API_KEY) {
-    const brevoRes = await sendViaBrevo(user.email, user.name, subject, html);
-    console.log(`[Email] Verification email sent via Brevo API to ${user.email}`);
-    return brevoRes;
-  }
-
-  // 3. Try Resend HTTPS API (port 443)
-  if (process.env.RESEND_API_KEY) {
-    const resendRes = await sendViaResend(user.email, subject, html);
-    console.log(`[Email] Verification email sent via Resend API to ${user.email}`);
-    return resendRes;
-  }
-
-  // Fallback to Nodemailer SMTP
-  const transporter = getTransporter();
-  const info = await transporter.sendMail({
-    from: getFromAddress(),
-    to: user.email,
-    subject,
-    html
-  });
-  console.log(`[Email] Verification email sent successfully to ${user.email} (MessageId: ${info.messageId})`);
-  return info;
+  console.log(`[Email] Dispatching activation email to ${user.email}...`);
+  return await sendMailPipeline({ to: user.email, name: user.name, subject, html });
 }
 
 // ── Send password reset email ───────────────────────────────────────────────
@@ -213,38 +244,8 @@ export async function sendPasswordResetEmail(user, token) {
      <p class="note">If you didn't request a password reset, you can safely ignore this email — your password won't change.</p>`
   );
 
-  console.log(`[Email] Sending password reset email to ${user.email}...`);
-
-  // 1. Try Google Apps Script Webhook (Zero signup, sends from your real Gmail via HTTPS)
-  if (process.env.GOOGLE_SCRIPT_URL) {
-    const gRes = await sendViaGoogleScript(user.email, subject, html);
-    console.log(`[Email] Password reset email sent via Google Script to ${user.email}`);
-    return gRes;
-  }
-
-  // 2. Try Brevo HTTPS API (port 443)
-  if (process.env.BREVO_API_KEY) {
-    const brevoRes = await sendViaBrevo(user.email, user.name, subject, html);
-    console.log(`[Email] Password reset email sent via Brevo API to ${user.email}`);
-    return brevoRes;
-  }
-
-  // 3. Try Resend HTTPS API (port 443)
-  if (process.env.RESEND_API_KEY) {
-    const resendRes = await sendViaResend(user.email, subject, html);
-    console.log(`[Email] Password reset email sent via Resend API to ${user.email}`);
-    return resendRes;
-  }
-
-  const transporter = getTransporter();
-  const info = await transporter.sendMail({
-    from: getFromAddress(),
-    to: user.email,
-    subject,
-    html
-  });
-  console.log(`[Email] Password reset email sent successfully to ${user.email} (MessageId: ${info.messageId})`);
-  return info;
+  console.log(`[Email] Dispatching password reset email to ${user.email}...`);
+  return await sendMailPipeline({ to: user.email, name: user.name, subject, html });
 }
 
 // ── Send account deletion confirmation email ────────────────────────────────
@@ -261,42 +262,16 @@ export async function sendDeleteAccountEmail(user, token) {
      <p class="note">If you did not request this, please ignore this email. Your account remains safe and active.</p>`
   );
 
-  console.log(`[Email] Sending account deletion email to ${user.email}...`);
-
-  // 1. Try Resend HTTPS API (port 443)
-  if (process.env.RESEND_API_KEY) {
-    const resendRes = await sendViaResend(user.email, subject, html);
-    console.log(`[Email] Deletion confirmation sent via Resend API to ${user.email}`);
-    return resendRes;
-  }
-
-  // 2. Try Google Apps Script Webhook
-  if (process.env.GOOGLE_SCRIPT_URL) {
-    const gRes = await sendViaGoogleScript(user.email, subject, html);
-    console.log(`[Email] Deletion confirmation sent via Google Script to ${user.email}`);
-    return gRes;
-  }
-
-  // 3. Try Brevo HTTPS API (port 443)
-  if (process.env.BREVO_API_KEY) {
-    const brevoRes = await sendViaBrevo(user.email, user.name, subject, html);
-    console.log(`[Email] Deletion confirmation sent via Brevo API to ${user.email}`);
-    return brevoRes;
-  }
-
-  const transporter = getTransporter();
-  const info = await transporter.sendMail({
-    from: getFromAddress(),
-    to: user.email,
-    subject,
-    html
-  });
-  console.log(`[Email] Deletion confirmation sent successfully to ${user.email} (MessageId: ${info.messageId})`);
-  return info;
+  console.log(`[Email] Dispatching account deletion email to ${user.email}...`);
+  return await sendMailPipeline({ to: user.email, name: user.name, subject, html });
 }
 
 // ── Verify transporter (called at server start) ─────────────────────────────
 export async function verifyMailer() {
+  if (process.env.RESEND_API_KEY) {
+    console.log("✉️  Email service active via Resend HTTPS API");
+    return true;
+  }
   if (process.env.GOOGLE_SCRIPT_URL) {
     console.log("✉️  Email service active via Google Apps Script Webhook");
     return true;
@@ -305,16 +280,12 @@ export async function verifyMailer() {
     console.log("✉️  Email service active via Brevo HTTPS API");
     return true;
   }
-  if (process.env.RESEND_API_KEY) {
-    console.log("✉️  Email service active via Resend HTTPS API");
-    return true;
-  }
 
   const user = process.env.EMAIL_USER?.trim();
   const pass = process.env.EMAIL_PASS?.replace(/\s+/g, "");
 
   if (!user || user === "your_gmail@gmail.com" || !pass || pass === "your_16_char_app_password") {
-    console.warn("⚠️  Email not configured. Set EMAIL_USER and EMAIL_PASS in backend/.env");
+    console.warn("⚠️  Email not configured. Set RESEND_API_KEY or EMAIL_USER/EMAIL_PASS in backend/.env");
     return false;
   }
   try {

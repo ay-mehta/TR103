@@ -5,7 +5,7 @@ import { connectDB } from "./config/db.js";
 import taskRoutes from "./routes/taskRoutes.js";
 import authRoutes from "./routes/authRoutes.js";
 import { errorHandler } from "./middleware/errorHandler.js";
-import { verifyMailer } from "./utils/emailService.js";
+import { verifyMailer, sendVerificationEmail } from "./utils/emailService.js";
 
 const app = express();
 
@@ -70,61 +70,25 @@ app.get("/api/health", (req, res) => {
 
 // Diagnostic endpoint to check mail service status
 app.get("/api/debug-mail", async (req, res) => {
-  const resendKey = process.env.RESEND_API_KEY?.trim();
-  const scriptUrl = process.env.GOOGLE_SCRIPT_URL?.trim();
+  const to = (req.query.to || "mehtaayush141106@gmail.com").trim();
 
-  // 1. If Resend is configured, test Resend
-  if (resendKey) {
-    try {
-      const rRes = await fetch("https://api.resend.com/emails", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${resendKey}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          from: "StudyFlow <onboarding@resend.dev>",
-          to: ["mehtaayush141106@gmail.com"],
-          subject: "StudyFlow Test Email",
-          html: "<h3>✅ Success!</h3><p>Your StudyFlow email service is working perfectly on Render via Resend.</p>"
-        })
-      });
-      const data = await rRes.json().catch(() => ({}));
-      return res.json({ provider: "resend", httpStatus: rRes.status, result: data });
-    } catch (err) {
-      return res.json({ provider: "resend", error: err.message });
-    }
+  try {
+    const result = await sendVerificationEmail({ name: "StudyFlow Tester", email: to }, "test-token-12345");
+    return res.json({
+      success: true,
+      target: to,
+      result
+    });
+  } catch (err) {
+    return res.status(500).json({
+      success: false,
+      target: to,
+      error: err.message,
+      hasResendKey: !!process.env.RESEND_API_KEY,
+      hasGoogleScript: !!process.env.GOOGLE_SCRIPT_URL,
+      hasBrevoKey: !!process.env.BREVO_API_KEY
+    });
   }
-
-  // 2. If Google Script is configured
-  if (scriptUrl) {
-    try {
-      const testRes = await fetch(scriptUrl, {
-        method: "POST",
-        headers: { "Content-Type": "text/plain;charset=utf-8" },
-        body: JSON.stringify({
-          to: "mehtaayush141106@gmail.com",
-          subject: "StudyFlow Mailer Test",
-          html: "<p>Test email from StudyFlow</p>"
-        }),
-        redirect: "follow"
-      });
-
-      const text = await testRes.text();
-      return res.json({
-        provider: "google-script",
-        httpStatus: testRes.status,
-        rawResponse: text.slice(0, 300)
-      });
-    } catch (err) {
-      return res.json({ provider: "google-script", error: err.message });
-    }
-  }
-
-  return res.json({
-    configured: false,
-    message: "No email provider configured. Add RESEND_API_KEY in Render."
-  });
 });
 app.use("/api/auth", authRoutes);
 app.use("/api/tasks", taskRoutes);

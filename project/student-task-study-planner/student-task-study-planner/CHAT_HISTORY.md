@@ -169,6 +169,14 @@ c:\Users\hp\repos\TR103\
   - **Step 2 (Verification Link):** Opening the link in `/verify-email?token=...` checks token validity and displays a dedicated "Create your password" form welcoming the user by name.
   - **Step 3 (Password Setup & Verification):** User enters and confirms their new password (min. 6 characters). The backend hashes the password with bcrypt, marks `isVerified: true`, clears verification tokens, and returns active authentication JWT.
   - **Result:** The screen displays **"Account Verified! 🎉"** and allows the user to log in securely. Accounts cannot be activated without controlling the email address.
+  - **Email Dispatch Pipeline Architecture:**
+    - Refactored `emailService.js` into a unified `sendMailPipeline`:
+      1. Primary: **Resend HTTPS API** (port 443) prioritized over SMTP to bypass cloud port blocks.
+      2. Secondary: Google Apps Script Webhook with `User-Agent` headers.
+      3. Tertiary: Brevo HTTPS API.
+      4. Fallback: Nodemailer SMTP.
+    - Each provider is protected with isolated `try...catch` so an error in one provider automatically triggers fallback to the next.
+    - Resend Free Tier Sandbox Note: Emails to `mehtaayush141106@gmail.com` deliver directly to Gmail inbox; for arbitrary test addresses, `Signup.jsx` displays the direct activation link fallback so testing is never blocked.
 
 ---
 
