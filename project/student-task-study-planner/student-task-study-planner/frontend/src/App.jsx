@@ -14,6 +14,7 @@ import VerifyEmail from "./pages/VerifyEmail";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
 import Profile from "./pages/Profile";
+import DeleteAccount from "./pages/DeleteAccount";
 
 const tabs = [
   { id: "all", label: "All tasks" },
@@ -181,6 +182,7 @@ export default function App() {
       <Route path="/verify-email"   element={<VerifyEmail />} />
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/reset-password" element={<ResetPassword />} />
+      <Route path="/delete-account" element={<DeleteAccount />} />
 
       {/* Protected routes */}
       <Route path="/dashboard" element={<Protected><Dashboard /></Protected>} />

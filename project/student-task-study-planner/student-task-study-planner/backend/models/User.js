@@ -29,7 +29,10 @@ const userSchema = new mongoose.Schema(
     verificationTokenExpiry: { type: Date, default: null },
     // ── Password reset ──────────────────────────
     resetPasswordToken: { type: String, default: null },
-    resetPasswordTokenExpiry: { type: Date, default: null }
+    resetPasswordTokenExpiry: { type: Date, default: null },
+    // ── Account deletion ────────────────────────
+    deleteAccountToken: { type: String, default: null },
+    deleteAccountTokenExpiry: { type: Date, default: null }
   },
   { timestamps: true }
 );

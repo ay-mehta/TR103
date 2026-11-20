@@ -246,6 +246,54 @@ export async function sendPasswordResetEmail(user, token) {
   return info;
 }
 
+// ── Send account deletion confirmation email ────────────────────────────────
+export async function sendDeleteAccountEmail(user, token) {
+  const link = `${getClientUrl()}/delete-account?token=${token}`;
+  const subject = "⚠️ Confirm StudyFlow Account Deletion";
+  const html = shell(
+    `Confirm Account Deletion`,
+    `<p>Hi <strong>${user.name}</strong>, we received a request to permanently delete your StudyFlow account.</p>
+     <p style="color:#d93025;font-weight:600;">⚠️ This action is permanent and cannot be undone. All your tasks, study progress, and data will be erased from our database.</p>
+     <p>If you requested this, click the button below and confirm with your username and password. This link expires in <strong>1 hour</strong>.</p>
+     <a href="${link}" class="btn" style="background:#e53e3e;">Confirm Account Deletion</a>
+     <p class="note">If the button doesn't work, copy this link:<br/><a href="${link}">${link}</a></p>
+     <p class="note">If you did not request this, please ignore this email. Your account remains safe and active.</p>`
+  );
+
+  console.log(`[Email] Sending account deletion email to ${user.email}...`);
+
+  // 1. Try Resend HTTPS API (port 443)
+  if (process.env.RESEND_API_KEY) {
+    const resendRes = await sendViaResend(user.email, subject, html);
+    console.log(`[Email] Deletion confirmation sent via Resend API to ${user.email}`);
+    return resendRes;
+  }
+
+  // 2. Try Google Apps Script Webhook
+  if (process.env.GOOGLE_SCRIPT_URL) {
+    const gRes = await sendViaGoogleScript(user.email, subject, html);
+    console.log(`[Email] Deletion confirmation sent via Google Script to ${user.email}`);
+    return gRes;
+  }
+
+  // 3. Try Brevo HTTPS API (port 443)
+  if (process.env.BREVO_API_KEY) {
+    const brevoRes = await sendViaBrevo(user.email, user.name, subject, html);
+    console.log(`[Email] Deletion confirmation sent via Brevo API to ${user.email}`);
+    return brevoRes;
+  }
+
+  const transporter = getTransporter();
+  const info = await transporter.sendMail({
+    from: getFromAddress(),
+    to: user.email,
+    subject,
+    html
+  });
+  console.log(`[Email] Deletion confirmation sent successfully to ${user.email} (MessageId: ${info.messageId})`);
+  return info;
+}
+
 // ── Verify transporter (called at server start) ─────────────────────────────
 export async function verifyMailer() {
   if (process.env.GOOGLE_SCRIPT_URL) {

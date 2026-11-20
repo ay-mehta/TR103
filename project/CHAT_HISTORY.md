@@ -25,6 +25,7 @@ The **StudyFlow** full-stack MERN application is **100% complete, fully deployed
   - Signup, email verification, login, JWT token auth, and profile editing.
   - Interactive task board: CRUD operations, priority tags, category filters, and completion toggles.
   - Forgot password / reset password workflow with real-time email dispatch and verified token verification.
+  - **Account Deletion:** Two-step secure profile deletion with email verification and credential confirmation (permanently wipes user and all tasks).
 
 ---
 
@@ -130,6 +131,18 @@ c:\Users\hp\repos\TR103\
   - Email buttons generated `http://*/reset-password?token=...`, which Google flagged as invalid.
   - Replaced `CLIENT_URL` with the live Netlify URL (`https://<site>.netlify.app`).
   - Added sanitization in `getClientUrl()` to reject `*` and enforce HTTPS format.
+
+### 6. Account & Profile Deletion Feature (Email Verification + Credential Re-authentication)
+- **Implementation Goal:** Provide a secure user flow to permanently delete an account and all tasks.
+- **Backend Flow:**
+  - `User.js` model updated with `deleteAccountToken` and `deleteAccountTokenExpiry`.
+  - `emailService.js` updated with `sendDeleteAccountEmail(user, token)`.
+  - `POST /api/auth/request-delete-account` (protected): Generates secure 1-hour token, saves to user, and dispatches confirmation email with link to `/delete-account?token=...`.
+  - `POST /api/auth/confirm-delete-account` (public): Validates token, verifies username/email and password against bcrypt hash, wipes all user tasks (`Task.deleteMany({ user: user._id })`), and deletes user record (`User.findByIdAndDelete(user._id)`).
+- **Frontend Flow:**
+  - `Profile.jsx`: Added Danger Zone section with "Delete Account" button and confirmation modal. Displays real-time status feedback and demo fallback link.
+  - `DeleteAccount.jsx`: Dedicated confirmation page accessed via email link. Asks for username/email and password with password visibility toggle.
+  - `App.jsx` & `api.js`: Registered route `/delete-account` and API methods `requestDeleteAccount()` and `confirmDeleteAccount()`. Clears auth state and session upon deletion.
 
 ---
 

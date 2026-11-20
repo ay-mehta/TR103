@@ -2,7 +2,8 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   ArrowLeft, User, Mail, Shield, Calendar, Pencil,
-  Lock, Eye, EyeOff, CheckCircle2, AlertCircle, Save, X
+  Lock, Eye, EyeOff, CheckCircle2, AlertCircle, Save, X,
+  Trash2, AlertTriangle
 } from "lucide-react";
 import { api } from "../api";
 import { useAuth } from "../context/AuthContext";
@@ -25,6 +26,11 @@ export default function Profile() {
   const [showPw, setShowPw] = useState(false);
   const [savingPw, setSavingPw] = useState(false);
   const [pwMsg, setPwMsg] = useState({ type: "", text: "" });
+
+  // Delete account state
+  const [confirmDeleteModal, setConfirmDeleteModal] = useState(false);
+  const [requestingDelete, setRequestingDelete] = useState(false);
+  const [deleteMsg, setDeleteMsg] = useState({ type: "", text: "", link: "" });
 
   useEffect(() => {
     api.getProfile()
@@ -70,6 +76,26 @@ export default function Profile() {
     } catch (err) {
       setPwMsg({ type: "error", text: err.message });
     } finally { setSavingPw(false); }
+  }
+
+  // ── Request Account Deletion ───────────────────────────────────────────────
+  async function handleRequestDelete() {
+    setRequestingDelete(true);
+    setDeleteMsg({ type: "", text: "", link: "" });
+    try {
+      const data = await api.requestDeleteAccount();
+      setDeleteMsg({
+        type: "success",
+        text: data.message,
+        link: data.deleteLink || ""
+      });
+      setConfirmDeleteModal(false);
+    } catch (err) {
+      setDeleteMsg({ type: "error", text: err.message, link: "" });
+      setConfirmDeleteModal(false);
+    } finally {
+      setRequestingDelete(false);
+    }
   }
 
   if (loadingProfile) {
@@ -258,12 +284,108 @@ export default function Profile() {
         </div>
 
         {/* Danger zone */}
-        <div className="profile-danger">
-          <span>Want to sign out?</span>
-          <button className="profile-btn-danger" onClick={() => { logout(); navigate("/"); }}>
-            Sign out of all sessions
-          </button>
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <div className="profile-danger">
+            <span>Want to sign out?</span>
+            <button className="profile-btn-danger" onClick={() => { logout(); navigate("/"); }}>
+              Sign out of all sessions
+            </button>
+          </div>
+
+          {/* Delete Account Card */}
+          <div className="profile-card" style={{ borderColor: "#fecaca", background: "#fffafb", margin: 0 }}>
+            <div className="profile-card-header" style={{ color: "#dc2626" }}>
+              <Trash2 size={17} /> Danger Zone: Delete Account
+            </div>
+
+            <p style={{ fontSize: 13, color: "#64748b", margin: "0 0 16px", lineHeight: 1.6 }}>
+              Permanently delete your profile and all associated study tasks, categories, and records. Once deleted, this data cannot be recovered.
+            </p>
+
+            {deleteMsg.text && (
+              <div className={`profile-banner ${deleteMsg.type}`} style={{ marginBottom: 16 }}>
+                {deleteMsg.type === "success" ? <CheckCircle2 size={15} /> : <AlertCircle size={15} />}
+                <div>
+                  <div>{deleteMsg.text}</div>
+                  {deleteMsg.link && (
+                    <div style={{ marginTop: 8 }}>
+                      <a href={deleteMsg.link} className="auth-submit" style={{ display: "inline-block", padding: "6px 14px", fontSize: 12, textDecoration: "none" }}>
+                        👉 Direct Confirmation Link (Demo Fallback)
+                      </a>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 14 }}>
+              <div>
+                <strong style={{ fontSize: 13, color: "#1e293b", display: "block" }}>Delete this account</strong>
+                <span style={{ fontSize: 12, color: "#94a3b8" }}>
+                  A verification email will be sent to <strong>{profile?.email}</strong> requiring your credentials to confirm.
+                </span>
+              </div>
+              <button
+                type="button"
+                className="profile-btn-danger"
+                style={{ background: "#dc2626", color: "#fff", padding: "10px 18px", display: "inline-flex", alignItems: "center", gap: 6 }}
+                disabled={requestingDelete}
+                onClick={() => setConfirmDeleteModal(true)}
+              >
+                <Trash2 size={14} />
+                {requestingDelete ? "Sending email…" : "Delete Account"}
+              </button>
+            </div>
+          </div>
         </div>
+
+        {/* Confirmation Modal */}
+        {confirmDeleteModal && (
+          <div style={{
+            position: "fixed", inset: 0, background: "rgba(15, 23, 42, 0.6)",
+            display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 16
+          }}>
+            <div style={{
+              background: "#fff", borderRadius: 16, padding: "28px 24px", maxWidth: 460, width: "100%",
+              boxShadow: "0 20px 25px -5px rgba(0,0,0,0.1), 0 8px 10px -6px rgba(0,0,0,0.1)"
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16, color: "#dc2626" }}>
+                <div style={{ background: "#fee2e2", padding: 10, borderRadius: 12, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <AlertTriangle size={24} />
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: 17, color: "#0f172a" }}>Confirm Account Deletion</h3>
+                  <span style={{ fontSize: 12, color: "#64748b" }}>This action is permanent and irreversible</span>
+                </div>
+              </div>
+
+              <p style={{ fontSize: 13, color: "#475569", lineHeight: 1.6, margin: "0 0 20px" }}>
+                We will send a secure verification email to <strong>{profile?.email}</strong>. Clicking the link will ask for your username and password to permanently erase your profile and all your study tasks.
+              </p>
+
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+                <button
+                  type="button"
+                  className="profile-btn-sm"
+                  style={{ padding: "9px 18px", fontSize: 13 }}
+                  onClick={() => setConfirmDeleteModal(false)}
+                  disabled={requestingDelete}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="profile-btn-danger"
+                  style={{ background: "#dc2626", color: "#fff", padding: "9px 18px", fontSize: 13 }}
+                  disabled={requestingDelete}
+                  onClick={handleRequestDelete}
+                >
+                  {requestingDelete ? "Sending…" : "Yes, Send Deletion Email"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
