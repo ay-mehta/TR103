@@ -155,16 +155,17 @@ function shell(title, body) {
 // ── Send verification email ─────────────────────────────────────────────────
 export async function sendVerificationEmail(user, token) {
   const link = `${getClientUrl()}/verify-email?token=${token}`;
-  const subject = "✅ Verify your StudyFlow account";
+  const subject = "✅ Activate your StudyFlow account & set your password";
   const html = shell(
-    `Hi ${user.name}, please verify your email`,
-    `<p>Thanks for signing up! Click the button below to activate your StudyFlow account. This link expires in <strong>24 hours</strong>.</p>
-     <a href="${link}" class="btn">Verify my account</a>
-     <p class="note">If the button doesn't work, copy this link:<br/><a href="${link}">${link}</a></p>
-     <p class="note">If you didn't create an account, you can safely ignore this email.</p>`
+    `Welcome to StudyFlow, ${user.name}!`,
+    `<p>Thanks for starting your registration at StudyFlow.</p>
+     <p>To confirm that you own this email address and complete your account setup, click the button below to choose your password and activate your account. This link expires in <strong>24 hours</strong>.</p>
+     <a href="${link}" class="btn">Set Password & Activate Account</a>
+     <p class="note">If the button doesn't work, copy this link into your browser:<br/><a href="${link}">${link}</a></p>
+     <p class="note">If you did not sign up for StudyFlow, you can safely ignore this email. No account will be created without setting a password.</p>`
   );
 
-  console.log(`[Email] Sending verification email to ${user.email}...`);
+  console.log(`[Email] Sending activation/verification email to ${user.email}...`);
 
   // 1. Try Google Apps Script Webhook (Zero signup, sends from your real Gmail via HTTPS)
   if (process.env.GOOGLE_SCRIPT_URL) {

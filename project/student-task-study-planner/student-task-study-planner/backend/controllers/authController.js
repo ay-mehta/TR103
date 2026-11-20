@@ -12,12 +12,13 @@ function generateJWT(id) {
   return jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: "7d" });
 }
 
-// ── Register ────────────────────────────────────────────────────────────────
+// ── Register (Step 1: Enter Username & Email, sends verification email) ──────
 export async function register(req, res, next) {
   try {
-    const { name, email, password } = req.body;
-    if (!name?.trim() || !email?.trim() || !password)
-      return res.status(400).json({ message: "Name, email and password are required." });
+    const { name, email } = req.body;
+    if (!name?.trim() || !email?.trim()) {
+      return res.status(400).json({ message: "Name and email are required." });
+    }
 
     const cleanEmail = email.toLowerCase().trim();
     let user = await User.findOne({ email: cleanEmail });
@@ -26,62 +27,78 @@ export async function register(req, res, next) {
       if (user.isVerified) {
         return res.status(409).json({ message: "An account with that email already exists. Please log in." });
       }
-      // If user registered earlier but wasn't verified, update their info and re-issue token
+      // If user registered earlier but wasn't verified, update their name and issue fresh token
       user.name = name.trim();
-      user.password = password; // Will be hashed by pre-save hook
       const token = user.generateToken();
       user.verificationToken = token;
-      user.verificationTokenExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000);
+      user.verificationTokenExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24h
       await user.save();
 
+      let emailSent = false;
       try {
         await sendVerificationEmail(user, token);
-        return res.status(200).json({
-          message: "A verification email has been sent! Please check your inbox to activate your account."
-        });
+        emailSent = true;
       } catch (emailErr) {
         console.warn("⚠️ Verification email failed to send:", emailErr.message);
-        user.isVerified = true;
-        user.verificationToken = undefined;
-        user.verificationTokenExpiry = undefined;
-        await user.save();
+      }
+
+      const clientUrl = getClientUrl();
+      const verifyLink = `${clientUrl}/verify-email?token=${token}`;
+
+      if (!emailSent) {
+        console.log(`[DEMO FALLBACK] Verification link for ${user.email}: ${verifyLink}`);
         return res.status(200).json({
-          message: "Account updated! Since cloud SMTP ports are restricted, your account has been auto-verified. You can log in directly!",
-          autoVerified: true
+          message: "A verification link has been generated. Use the link below to set your password and activate your account.",
+          verifyLink,
+          emailSent: false
         });
       }
+
+      return res.status(200).json({
+        message: "A verification email has been sent! Please check your inbox to set your password and activate your account.",
+        emailSent: true
+      });
     }
 
-    user = new User({ name: name.trim(), email: cleanEmail, password });
+    // New unverified registration (password is set in step 2 via email link)
+    user = new User({ name: name.trim(), email: cleanEmail, isVerified: false });
     const token = user.generateToken();
     user.verificationToken = token;
     user.verificationTokenExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24h
     await user.save();
 
+    let emailSent = false;
     try {
       await sendVerificationEmail(user, token);
-      res.status(201).json({
-        message: "Account created! Please check your email to verify your account before logging in."
-      });
+      emailSent = true;
     } catch (emailErr) {
-      console.warn("⚠️ Verification email failed to send (cloud SMTP restricted):", emailErr.message);
-      user.isVerified = true;
-      user.verificationToken = undefined;
-      user.verificationTokenExpiry = undefined;
-      await user.save();
-      res.status(201).json({
-        message: "Account created! Since cloud SMTP ports are restricted, your account has been auto-verified. You can log in directly!",
-        autoVerified: true
+      console.warn("⚠️ Verification email failed to send:", emailErr.message);
+    }
+
+    const clientUrl = getClientUrl();
+    const verifyLink = `${clientUrl}/verify-email?token=${token}`;
+
+    if (!emailSent) {
+      console.log(`[DEMO FALLBACK] Verification link for ${user.email}: ${verifyLink}`);
+      return res.status(201).json({
+        message: "A verification link has been generated. Use the link below to set your password and activate your account.",
+        verifyLink,
+        emailSent: false
       });
     }
+
+    res.status(201).json({
+      message: "A verification email has been sent! Please check your inbox to set your password and activate your account.",
+      emailSent: true
+    });
   } catch (error) {
     console.error("Registration error:", error);
     next(error);
   }
 }
 
-// ── Verify Email ────────────────────────────────────────────────────────────
-export async function verifyEmail(req, res, next) {
+// ── Check Verification Token (Step 2: Validate link before asking for password) ─
+export async function checkVerificationToken(req, res, next) {
   try {
     const { token } = req.query;
     if (!token) return res.status(400).json({ message: "Verification token is missing." });
@@ -90,16 +107,61 @@ export async function verifyEmail(req, res, next) {
       verificationToken: token,
       verificationTokenExpiry: { $gt: Date.now() }
     });
-    if (!user)
-      return res.status(400).json({ message: "This verification link is invalid or has expired." });
 
+    if (!user) {
+      return res.status(400).json({ message: "This activation link is invalid or has expired." });
+    }
+
+    res.json({
+      valid: true,
+      user: {
+        name: user.name,
+        email: user.email
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export const verifyEmail = checkVerificationToken;
+
+// ── Complete Signup (Step 3: User sets password -> verify and activate) ──────
+export async function completeSignup(req, res, next) {
+  try {
+    const { token, password } = req.body;
+    if (!token) return res.status(400).json({ message: "Verification token is missing." });
+    if (!password || password.length < 6) {
+      return res.status(400).json({ message: "Password must be at least 6 characters." });
+    }
+
+    const user = await User.findOne({
+      verificationToken: token,
+      verificationTokenExpiry: { $gt: Date.now() }
+    });
+
+    if (!user) {
+      return res.status(400).json({ message: "This activation link is invalid or has expired." });
+    }
+
+    // Set password and mark verified
+    user.password = password; // Automatically hashed by userSchema.pre("save")
     user.isVerified = true;
     user.verificationToken = null;
     user.verificationTokenExpiry = null;
     await user.save();
 
-    res.json({ message: "Email verified! You can now log in." });
-  } catch (error) { next(error); }
+    console.log(`[Registration] Account verified & password set for ${user.email}`);
+
+    const jwtToken = generateJWT(user._id);
+    res.json({
+      message: "Account verified! Your password has been set successfully.",
+      token: jwtToken,
+      user: { _id: user._id, name: user.name, email: user.email }
+    });
+  } catch (error) {
+    next(error);
+  }
 }
 
 // ── Resend verification ─────────────────────────────────────────────────────
@@ -110,27 +172,34 @@ export async function resendVerification(req, res, next) {
 
     const user = await User.findOne({ email: email.toLowerCase().trim() });
     if (!user) return res.status(404).json({ message: "No account found with that email." });
-    if (user.isVerified) return res.status(400).json({ message: "This account is already verified." });
+    if (user.isVerified) return res.status(400).json({ message: "This account is already verified. Please log in." });
 
     const token = user.generateToken();
     user.verificationToken = token;
     user.verificationTokenExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000);
     await user.save();
 
+    let emailSent = false;
     try {
       await sendVerificationEmail(user, token);
-      res.json({ message: "A new verification email has been sent. Please check your inbox." });
+      emailSent = true;
     } catch (emailErr) {
       console.warn("⚠️ Resend verification failed:", emailErr.message);
-      user.isVerified = true;
-      user.verificationToken = null;
-      user.verificationTokenExpiry = null;
-      await user.save();
-      res.json({
-        message: "Since cloud email ports are restricted, your account has been automatically verified. You can log in directly!",
-        autoVerified: true
+    }
+
+    const clientUrl = getClientUrl();
+    const verifyLink = `${clientUrl}/verify-email?token=${token}`;
+
+    if (!emailSent) {
+      console.log(`[DEMO FALLBACK] Resend verification link for ${user.email}: ${verifyLink}`);
+      return res.json({
+        message: "A new activation link has been generated. Use the link below to set your password and activate your account.",
+        verifyLink,
+        emailSent: false
       });
     }
+
+    res.json({ message: "A new verification email has been sent. Please check your inbox.", emailSent: true });
   } catch (error) { next(error); }
 }
 
@@ -142,12 +211,12 @@ export async function login(req, res, next) {
       return res.status(400).json({ message: "Email and password are required." });
 
     const user = await User.findOne({ email: email.toLowerCase().trim() });
-    if (!user || !(await user.matchPassword(password)))
+    if (!user || !user.password || !(await user.matchPassword(password)))
       return res.status(401).json({ message: "Incorrect email or password." });
 
     if (!user.isVerified)
       return res.status(403).json({
-        message: "Please verify your email before logging in.",
+        message: "Please verify your email and set your password before logging in.",
         unverified: true
       });
 

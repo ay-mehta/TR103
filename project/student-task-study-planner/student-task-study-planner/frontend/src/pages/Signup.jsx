@@ -1,32 +1,29 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { BookOpen, Mail, Lock, User, Eye, EyeOff, AlertCircle, CheckCircle2 } from "lucide-react";
+import { BookOpen, Mail, User, AlertCircle, CheckCircle2 } from "lucide-react";
 import { api } from "../api";
 
 export default function Signup() {
   const navigate = useNavigate();
-  const [form, setForm] = useState({ name: "", email: "", password: "", confirm: "" });
-  const [showPass, setShowPass] = useState(false);
+  const [form, setForm] = useState({ name: "", email: "" });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
-  const [autoVerified, setAutoVerified] = useState(false);
   const [submittedEmail, setSubmittedEmail] = useState("");
+  const [verifyLink, setVerifyLink] = useState("");
 
   function change(e) { setForm((f) => ({ ...f, [e.target.name]: e.target.value })); }
 
   async function submit(e) {
     e.preventDefault();
     setError("");
-    if (form.password !== form.confirm) return setError("Passwords do not match.");
-    if (form.password.length < 6) return setError("Password must be at least 6 characters.");
+    if (!form.name.trim()) return setError("Please enter your name.");
+    if (!form.email.trim()) return setError("Please enter your email address.");
     setLoading(true);
     try {
-      const data = await api.register({ name: form.name, email: form.email, password: form.password });
-      setSubmittedEmail(form.email);
-      if (data?.autoVerified) {
-        setAutoVerified(true);
-      }
+      const data = await api.register({ name: form.name.trim(), email: form.email.trim() });
+      setSubmittedEmail(form.email.trim());
+      setVerifyLink(data?.verifyLink || "");
       setDone(true);
     } catch (err) {
       setError(err.message);
@@ -41,29 +38,30 @@ export default function Signup() {
             <BookOpen size={28} /><span>study<span className="brand-accent">flow</span></span>
           </div>
           <CheckCircle2 size={56} style={{ color: "#4caa84", display: "block", margin: "8px auto 16px" }} />
-          <h1 className="auth-title">
-            {autoVerified ? "Account Verified! 🎉" : "Check your inbox! 📬"}
-          </h1>
+          <h1 className="auth-title">Check your inbox! 📬</h1>
           <p className="auth-subtitle">
-            {autoVerified ? (
-              <>
-                Welcome to StudyFlow, <strong>{form.name}</strong>! Your account has been verified and is ready to use.
-              </>
-            ) : (
-              <>
-                We've sent a verification email to <strong>{submittedEmail}</strong>.
-                <br />Click the link in the email to activate your account.
-              </>
-            )}
+            We've sent an activation link to <strong>{submittedEmail}</strong>.
+            <br />Open the link in your email to choose your password and activate your account.
           </p>
-          {!autoVerified && (
-            <p style={{ fontSize: 12, color: "#9292a5", marginTop: 8, lineHeight: 1.6 }}>
-              Didn't receive it? Check your spam folder.
-              <br />The link expires in 24 hours.
-            </p>
+          <p style={{ fontSize: 12, color: "#9292a5", marginTop: 8, lineHeight: 1.6 }}>
+            Didn't receive it? Check your spam folder.
+            <br />The link expires in 24 hours.
+          </p>
+
+          {verifyLink && (
+            <div style={{ marginTop: 16 }}>
+              <a
+                href={verifyLink}
+                className="auth-submit"
+                style={{ display: "inline-block", textDecoration: "none", fontSize: 13, padding: "10px 18px" }}
+              >
+                👉 Open Activation Link (Demo Fallback)
+              </a>
+            </div>
           )}
-          <button className="auth-submit" style={{ marginTop: 24 }} onClick={() => navigate("/")}>
-            Go to Login
+
+          <button className="auth-link" style={{ marginTop: 20, display: "block", width: "100%", textAlign: "center" }} onClick={() => navigate("/")}>
+            Back to Login
           </button>
         </div>
       </div>
@@ -77,7 +75,9 @@ export default function Signup() {
           <BookOpen size={28} /><span>study<span className="brand-accent">flow</span></span>
         </div>
         <h1 className="auth-title">Create your account</h1>
-        <p className="auth-subtitle">Start organising your academic life today.</p>
+        <p className="auth-subtitle">
+          Enter your name and email to receive a secure activation link.
+        </p>
 
         {error && <div className="auth-error"><AlertCircle size={16} /> {error}</div>}
 
@@ -100,29 +100,12 @@ export default function Signup() {
             </div>
           </label>
 
-          <label className="auth-label">
-            <span>Password</span>
-            <div className="auth-input-wrap">
-              <Lock size={17} className="auth-icon" />
-              <input name="password" type={showPass ? "text" : "password"} value={form.password}
-                onChange={change} placeholder="At least 6 characters" required autoComplete="new-password" />
-              <button type="button" className="auth-eye" onClick={() => setShowPass((v) => !v)} tabIndex={-1}>
-                {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
-              </button>
-            </div>
-          </label>
-
-          <label className="auth-label">
-            <span>Confirm password</span>
-            <div className="auth-input-wrap">
-              <Lock size={17} className="auth-icon" />
-              <input name="confirm" type={showPass ? "text" : "password"} value={form.confirm}
-                onChange={change} placeholder="Repeat your password" required autoComplete="new-password" />
-            </div>
-          </label>
+          <p style={{ fontSize: 12, color: "#9292a5", margin: "2px 0 6px", lineHeight: 1.5 }}>
+            🔒 You will set your password after clicking the verification link sent to your inbox.
+          </p>
 
           <button className="auth-submit" disabled={loading}>
-            {loading ? "Creating account…" : "Create account"}
+            {loading ? "Sending link…" : "Send Verification Link"}
           </button>
         </form>
 

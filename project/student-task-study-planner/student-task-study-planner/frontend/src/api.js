@@ -30,12 +30,14 @@ async function request(path, options = {}) {
 
 export const api = {
   // ── Auth ──────────────────────────────────────────────────────────────────
-  register:           (body)  => request("/auth/register",            { method: "POST", body: JSON.stringify(body) }),
-  login:              (body)  => request("/auth/login",               { method: "POST", body: JSON.stringify(body) }),
-  verifyEmail:        (token) => request(`/auth/verify-email?token=${token}`),
-  resendVerification: (email) => request("/auth/resend-verification", { method: "POST", body: JSON.stringify({ email }) }),
-  forgotPassword:     (email) => request("/auth/forgot-password",     { method: "POST", body: JSON.stringify({ email }) }),
-  resetPassword:      (body)  => request("/auth/reset-password",      { method: "POST", body: JSON.stringify(body) }),
+  register:               (body)  => request("/auth/register",            { method: "POST", body: JSON.stringify(body) }),
+  login:                  (body)  => request("/auth/login",               { method: "POST", body: JSON.stringify(body) }),
+  checkVerificationToken: (token) => request(`/auth/verify-token?token=${token}`),
+  completeSignup:         (body)  => request("/auth/complete-signup",     { method: "POST", body: JSON.stringify(body) }),
+  verifyEmail:            (token) => request(`/auth/verify-token?token=${token}`),
+  resendVerification:     (email) => request("/auth/resend-verification", { method: "POST", body: JSON.stringify({ email }) }),
+  forgotPassword:         (email) => request("/auth/forgot-password",     { method: "POST", body: JSON.stringify({ email }) }),
+  resetPassword:          (body)  => request("/auth/reset-password",      { method: "POST", body: JSON.stringify(body) }),
 
   // ── Profile ───────────────────────────────────────────────────────────────
   getProfile:           ()     => request("/auth/profile"),

@@ -1,6 +1,6 @@
 import { Router } from "express";
 import {
-  register, verifyEmail, resendVerification,
+  register, checkVerificationToken, verifyEmail, completeSignup, resendVerification,
   login, getMe, getProfile, updateProfile,
   changePassword, forgotPassword, resetPassword,
   deleteAccount, confirmDeleteAccount, requestDeleteAccount
@@ -11,7 +11,10 @@ const router = Router();
 
 // Public / Direct Account Operations
 router.post("/register",               register);
+router.get("/verify-token",            checkVerificationToken);
 router.get("/verify-email",            verifyEmail);
+router.post("/complete-signup",        completeSignup);
+router.post("/verify-email",           completeSignup);
 router.post("/resend-verification",    resendVerification);
 router.post("/login",                  login);
 router.post("/forgot-password",        forgotPassword);

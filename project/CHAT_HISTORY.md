@@ -22,7 +22,8 @@ The **StudyFlow** full-stack MERN application is **100% complete, fully deployed
   - **Build & SPA Routing:** Vite production bundle with automated `/* /index.html 200` redirect rules.
   - **Robust API Targeting:** Automatic production fallback to Render API with URL normalization (auto-fixes missing `/api` or trailing slashes).
 - **Authentication & Core Features:**
-  - Signup, email verification, login, JWT token auth, and profile editing.
+  - Secure email-first signup: initial form collects name and email, dispatches activation email; user sets password only after clicking the email link to verify and activate account (preventing arbitrary account creation).
+  - Login, JWT token authentication, profile management, and password change.
   - Interactive task board: CRUD operations, priority tags, category filters, and completion toggles.
   - Forgot password / reset password workflow with real-time email dispatch and verified token verification.
   - **Account Deletion:** Direct credential-verified account deletion (username/email + password confirmation, cascading deletion of user profile and all study tasks in MongoDB Atlas, with zero email dependencies).
@@ -158,6 +159,16 @@ c:\Users\hp\repos\TR103\
     - Pre-fills username/email if user is logged in, prompts for password.
     - Executes deletion, logs out, and displays confirmed deletion screen with a "Return to Home" button.
   - `api.js`: Registered `deleteAccount()` endpoint.
+
+### 7. Secure Email-First Registration Flow (Email Verification Before Password Setup)
+- **Problem Solved:**
+  - Previously, the signup form asked for name, email, and password upfront. If cloud SMTP failed or under fallback, the frontend or backend could trigger auto-verification, allowing someone to register using any arbitrary email address.
+- **New Architecture & Flow:**
+  - **Step 1 (Signup):** User fills in only 2 credentials: Full Name (`name`) and Email (`email`). No password field is shown.
+  - **Email Dispatch:** Backend generates a secure 24-hour verification token, creates an unverified user record (`isVerified: false`, `password: null`), and dispatches an activation email with a link to `/verify-email?token=...`.
+  - **Step 2 (Verification Link):** Opening the link in `/verify-email?token=...` checks token validity and displays a dedicated "Create your password" form welcoming the user by name.
+  - **Step 3 (Password Setup & Verification):** User enters and confirms their new password (min. 6 characters). The backend hashes the password with bcrypt, marks `isVerified: true`, clears verification tokens, and returns active authentication JWT.
+  - **Result:** The screen displays **"Account Verified! 🎉"** and allows the user to log in securely. Accounts cannot be activated without controlling the email address.
 
 ---
 
