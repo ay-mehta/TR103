@@ -28,9 +28,12 @@ export default function Profile() {
   const [pwMsg, setPwMsg] = useState({ type: "", text: "" });
 
   // Delete account state
-  const [confirmDeleteModal, setConfirmDeleteModal] = useState(false);
-  const [requestingDelete, setRequestingDelete] = useState(false);
-  const [deleteMsg, setDeleteMsg] = useState({ type: "", text: "", link: "" });
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [deleteIdentifier, setDeleteIdentifier] = useState("");
+  const [deletePassword, setDeletePassword] = useState("");
+  const [showDeletePw, setShowDeletePw] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
 
   useEffect(() => {
     api.getProfile()
@@ -78,23 +81,35 @@ export default function Profile() {
     } finally { setSavingPw(false); }
   }
 
-  // ── Request Account Deletion ───────────────────────────────────────────────
-  async function handleRequestDelete() {
-    setRequestingDelete(true);
-    setDeleteMsg({ type: "", text: "", link: "" });
+  // ── Direct Account Deletion (NO email required) ────────────────────────────
+  function openDeleteModal() {
+    setDeleteIdentifier(profile?.email || profile?.name || "");
+    setDeletePassword("");
+    setDeleteError("");
+    setShowDeletePw(false);
+    setDeleteModalOpen(true);
+  }
+
+  async function handleDeleteAccount(e) {
+    e.preventDefault();
+    setDeleteError("");
+    if (!deleteIdentifier.trim()) return setDeleteError("Please enter your username or email address.");
+    if (!deletePassword) return setDeleteError("Please enter your password to confirm deletion.");
+
+    setDeletingAccount(true);
     try {
-      const data = await api.requestDeleteAccount();
-      setDeleteMsg({
-        type: "success",
-        text: data.message,
-        link: data.deleteLink || ""
+      await api.deleteAccount({
+        identifier: deleteIdentifier.trim(),
+        password: deletePassword
       });
-      setConfirmDeleteModal(false);
+
+      // Clear authentication session
+      logout();
+      // Redirect to delete-account page showing confirmed deletion message
+      navigate("/delete-account?status=deleted");
     } catch (err) {
-      setDeleteMsg({ type: "error", text: err.message, link: "" });
-      setConfirmDeleteModal(false);
-    } finally {
-      setRequestingDelete(false);
+      setDeleteError(err.message || "Failed to delete account. Please verify your credentials.");
+      setDeletingAccount(false);
     }
   }
 
@@ -299,90 +314,138 @@ export default function Profile() {
             </div>
 
             <p style={{ fontSize: 13, color: "#64748b", margin: "0 0 16px", lineHeight: 1.6 }}>
-              Permanently delete your profile and all associated study tasks, categories, and records. Once deleted, this data cannot be recovered.
+              Permanently delete your profile and all associated study tasks, categories, and records from our database. Once deleted, this data cannot be recovered.
             </p>
-
-            {deleteMsg.text && (
-              <div className={`profile-banner ${deleteMsg.type}`} style={{ marginBottom: 16 }}>
-                {deleteMsg.type === "success" ? <CheckCircle2 size={15} /> : <AlertCircle size={15} />}
-                <div>
-                  <div>{deleteMsg.text}</div>
-                  {deleteMsg.link && (
-                    <div style={{ marginTop: 8 }}>
-                      <a href={deleteMsg.link} className="auth-submit" style={{ display: "inline-block", padding: "6px 14px", fontSize: 12, textDecoration: "none" }}>
-                        👉 Direct Confirmation Link (Demo Fallback)
-                      </a>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
 
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 14 }}>
               <div>
                 <strong style={{ fontSize: 13, color: "#1e293b", display: "block" }}>Delete this account</strong>
                 <span style={{ fontSize: 12, color: "#94a3b8" }}>
-                  A verification email will be sent to <strong>{profile?.email}</strong> requiring your credentials to confirm.
+                  Requires your username/email and password to verify before permanent removal.
                 </span>
               </div>
               <button
                 type="button"
                 className="profile-btn-danger"
                 style={{ background: "#dc2626", color: "#fff", padding: "10px 18px", display: "inline-flex", alignItems: "center", gap: 6 }}
-                disabled={requestingDelete}
-                onClick={() => setConfirmDeleteModal(true)}
+                onClick={openDeleteModal}
               >
                 <Trash2 size={14} />
-                {requestingDelete ? "Sending email…" : "Delete Account"}
+                Delete Account
+              </button>
+            </div>
+
+            <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px dashed #fecaca", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+              <span style={{ fontSize: 12, color: "#94a3b8" }}>
+                Direct standalone deletion page:
+              </span>
+              <button
+                type="button"
+                onClick={() => navigate("/delete-account")}
+                className="auth-link"
+                style={{ fontSize: 12, background: "none", border: "none", padding: 0, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4 }}
+              >
+                Open /delete-account page →
               </button>
             </div>
           </div>
         </div>
 
-        {/* Confirmation Modal */}
-        {confirmDeleteModal && (
+        {/* Direct Delete Account Confirmation Modal */}
+        {deleteModalOpen && (
           <div style={{
-            position: "fixed", inset: 0, background: "rgba(15, 23, 42, 0.6)",
+            position: "fixed", inset: 0, background: "rgba(15, 23, 42, 0.65)",
+            backdropFilter: "blur(4px)",
             display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 16
           }}>
             <div style={{
-              background: "#fff", borderRadius: 16, padding: "28px 24px", maxWidth: 460, width: "100%",
-              boxShadow: "0 20px 25px -5px rgba(0,0,0,0.1), 0 8px 10px -6px rgba(0,0,0,0.1)"
+              background: "#fff", borderRadius: 18, padding: "28px 24px", maxWidth: 460, width: "100%",
+              boxShadow: "0 25px 50px -12px rgba(0,0,0,0.25)"
             }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16, color: "#dc2626" }}>
-                <div style={{ background: "#fee2e2", padding: 10, borderRadius: 12, display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
+                <div style={{ background: "#fee2e2", padding: 10, borderRadius: 12, display: "flex", alignItems: "center", justifyContent: "center", color: "#dc2626" }}>
                   <AlertTriangle size={24} />
                 </div>
                 <div>
-                  <h3 style={{ margin: 0, fontSize: 17, color: "#0f172a" }}>Confirm Account Deletion</h3>
-                  <span style={{ fontSize: 12, color: "#64748b" }}>This action is permanent and irreversible</span>
+                  <h3 style={{ margin: 0, fontSize: 18, color: "#0f172a" }}>Permanently Delete Account</h3>
+                  <span style={{ fontSize: 12, color: "#64748b" }}>Confirm your credentials to proceed</span>
                 </div>
               </div>
 
-              <p style={{ fontSize: 13, color: "#475569", lineHeight: 1.6, margin: "0 0 20px" }}>
-                We will send a secure verification email to <strong>{profile?.email}</strong>. Clicking the link will ask for your username and password to permanently erase your profile and all your study tasks.
-              </p>
-
-              <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
-                <button
-                  type="button"
-                  className="profile-btn-sm"
-                  style={{ padding: "9px 18px", fontSize: 13 }}
-                  onClick={() => setConfirmDeleteModal(false)}
-                  disabled={requestingDelete}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  className="profile-btn-danger"
-                  style={{ background: "#dc2626", color: "#fff", padding: "9px 18px", fontSize: 13 }}
-                  disabled={requestingDelete}
-                  onClick={handleRequestDelete}
-                >
-                  {requestingDelete ? "Sending…" : "Yes, Send Deletion Email"}
-                </button>
+              <div style={{
+                background: "#fff1f2", border: "1px solid #fecdd3", borderRadius: 10,
+                padding: "12px 14px", margin: "14px 0 16px", fontSize: 12, color: "#9f1239", lineHeight: 1.5
+              }}>
+                ⚠️ <strong>Warning:</strong> This will permanently erase your profile and all associated study tasks from the database. This action cannot be undone. No email confirmation is needed.
               </div>
+
+              {deleteError && (
+                <div className="auth-error" style={{ marginBottom: 14 }}>
+                  <AlertCircle size={15} /> {deleteError}
+                </div>
+              )}
+
+              <form onSubmit={handleDeleteAccount} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                <label className="profile-form-label">
+                  Username or Email
+                  <div className="auth-input-wrap" style={{ marginTop: 6 }}>
+                    <User size={16} className="auth-icon" />
+                    <input
+                      type="text"
+                      value={deleteIdentifier}
+                      onChange={(e) => setDeleteIdentifier(e.target.value)}
+                      placeholder="Username or email address"
+                      required
+                      className="profile-pw-input"
+                    />
+                  </div>
+                </label>
+
+                <label className="profile-form-label">
+                  Password
+                  <div className="auth-input-wrap" style={{ marginTop: 6 }}>
+                    <Lock size={16} className="auth-icon" />
+                    <input
+                      type={showDeletePw ? "text" : "password"}
+                      value={deletePassword}
+                      onChange={(e) => setDeletePassword(e.target.value)}
+                      placeholder="Enter your account password"
+                      required
+                      autoComplete="current-password"
+                      className="profile-pw-input"
+                    />
+                    <button
+                      type="button"
+                      className="auth-eye"
+                      onClick={() => setShowDeletePw((v) => !v)}
+                      tabIndex={-1}
+                    >
+                      {showDeletePw ? <EyeOff size={15} /> : <Eye size={15} />}
+                    </button>
+                  </div>
+                </label>
+
+                <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 8 }}>
+                  <button
+                    type="button"
+                    className="profile-btn-sm"
+                    style={{ padding: "9px 18px", fontSize: 13 }}
+                    onClick={() => setDeleteModalOpen(false)}
+                    disabled={deletingAccount}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="profile-btn-danger"
+                    style={{ background: "#dc2626", color: "#fff", padding: "9px 18px", fontSize: 13, display: "inline-flex", alignItems: "center", gap: 6 }}
+                    disabled={deletingAccount}
+                  >
+                    <Trash2 size={14} />
+                    {deletingAccount ? "Deleting Account…" : "Permanently Delete My Account"}
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         )}

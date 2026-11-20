@@ -7,29 +7,28 @@ import { useAuth } from "../context/AuthContext";
 export default function DeleteAccount() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { logout } = useAuth();
+  const { user: authUser, logout } = useAuth();
   const token = searchParams.get("token") || "";
 
-  const [identifier, setIdentifier] = useState("");
+  const [identifier, setIdentifier] = useState(authUser?.email || authUser?.name || "");
   const [password, setPassword] = useState("");
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [deleted, setDeleted] = useState(false);
+  const [deleted, setDeleted] = useState(searchParams.get("status") === "deleted");
   const [error, setError] = useState("");
 
   async function submit(e) {
     e.preventDefault();
     setError("");
-    if (!token) return setError("Deletion token is missing. Please use the link sent to your email.");
     if (!identifier.trim()) return setError("Please enter your username or email address.");
     if (!password) return setError("Please enter your password.");
 
     setLoading(true);
     try {
-      await api.confirmDeleteAccount({
-        token,
+      await api.deleteAccount({
         identifier: identifier.trim(),
-        password
+        password,
+        ...(token ? { token } : {})
       });
 
       // Clear any active local authentication session

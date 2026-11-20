@@ -267,88 +267,92 @@ export async function resetPassword(req, res, next) {
   } catch (error) { next(error); }
 }
 
-// ── Request Delete Account ──────────────────────────────────────────────────
-export async function requestDeleteAccount(req, res, next) {
+// ── Delete Account (Direct credential verification, NO email required) ───────
+export async function deleteAccount(req, res, next) {
   try {
-    const user = await User.findById(req.user._id);
-    if (!user) return res.status(404).json({ message: "User not found." });
+    const { identifier, email, username, password, token } = req.body;
+    const cred = (identifier || email || username || "").trim();
 
-    const token = user.generateToken();
-    user.deleteAccountToken = token;
-    user.deleteAccountTokenExpiry = new Date(Date.now() + 60 * 60 * 1000); // 1h
-    await user.save();
-
-    let emailSent = false;
-    try {
-      await sendDeleteAccountEmail(user, token);
-      emailSent = true;
-    } catch (emailErr) {
-      console.warn("⚠️ Account deletion email failed to send:", emailErr.message);
-    }
-
-    const clientUrl = getClientUrl();
-    const deleteLink = `${clientUrl}/delete-account?token=${token}`;
-
-    if (!emailSent) {
-      console.log(`[DEMO FALLBACK] Delete account link for ${user.email}: ${deleteLink}`);
-      return res.json({
-        message: "Email delivery failed due to cloud SMTP restriction. Use the direct link below for evaluation/testing.",
-        deleteLink,
-        emailSent: false
+    if (!cred || !password) {
+      return res.status(400).json({
+        message: "Username/Email and password are required to delete your account."
       });
     }
 
-    res.json({
-      message: `A confirmation email has been sent to ${user.email}. Please check your inbox to confirm deletion.`,
-      emailSent: true
-    });
-  } catch (error) { next(error); }
-}
+    let user = null;
 
-// ── Confirm Delete Account ──────────────────────────────────────────────────
-export async function confirmDeleteAccount(req, res, next) {
-  try {
-    const { token, identifier, email, username, password } = req.body;
-    if (!token) return res.status(400).json({ message: "Deletion token is missing or invalid." });
-
-    const userCredential = (identifier || email || username || "").trim().toLowerCase();
-    if (!userCredential || !password) {
-      return res.status(400).json({ message: "Username/Email and password are required to confirm deletion." });
+    // 1. If request is from an authenticated session (e.g. Profile modal)
+    if (req.user?._id) {
+      const authUser = await User.findById(req.user._id);
+      if (authUser) {
+        const matchesEmail = authUser.email.toLowerCase() === cred.toLowerCase();
+        const matchesName = authUser.name.toLowerCase().trim() === cred.toLowerCase();
+        if (matchesEmail || matchesName) {
+          user = authUser;
+        } else {
+          return res.status(401).json({
+            message: "Username or email does not match your currently logged-in account."
+          });
+        }
+      }
     }
 
-    // Find user by valid deletion token
-    const user = await User.findOne({
-      deleteAccountToken: token,
-      deleteAccountTokenExpiry: { $gt: Date.now() }
-    });
+    // 2. If token is provided from any existing link
+    if (!user && token) {
+      user = await User.findOne({
+        deleteAccountToken: token,
+        deleteAccountTokenExpiry: { $gt: Date.now() }
+      });
+    }
+
+    // 3. Direct lookup by email or username if not yet resolved
+    if (!user) {
+      const escaped = cred.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      user = await User.findOne({
+        $or: [
+          { email: cred.toLowerCase() },
+          { name: { $regex: new RegExp(`^${escaped}$`, "i") } }
+        ]
+      });
+    }
 
     if (!user) {
-      return res.status(400).json({ message: "This account deletion link is invalid or has expired." });
+      return res.status(404).json({
+        message: "No StudyFlow account was found with that username or email."
+      });
     }
 
-    // Verify identifier matches either user.email or user.name
-    const matchesEmail = user.email.toLowerCase() === userCredential;
-    const matchesName = user.name.toLowerCase().trim() === userCredential;
-    if (!matchesEmail && !matchesName) {
-      return res.status(401).json({ message: "Username or email does not match the account requesting deletion." });
-    }
-
-    // Verify password
+    // 4. Verify password
     const isPasswordValid = await user.matchPassword(password);
     if (!isPasswordValid) {
-      return res.status(401).json({ message: "Incorrect password. Account deletion aborted." });
+      return res.status(401).json({
+        message: "Incorrect password. Account deletion aborted."
+      });
     }
 
-    // Delete all associated tasks
+    // 5. Cascade delete: Delete all tasks belonging to this user
     const deletedTasks = await Task.deleteMany({ user: user._id });
-    console.log(`[Account Delete] Removed ${deletedTasks.deletedCount} tasks for user ${user.email}`);
+    console.log(`[Account Delete] Removed ${deletedTasks.deletedCount} tasks for user ${user.email} (${user._id})`);
 
-    // Delete the user record
+    // 6. Delete user profile
     await User.findByIdAndDelete(user._id);
-    console.log(`[Account Delete] User ${user.email} (${user._id}) permanently deleted.`);
+    console.log(`[Account Delete] User ${user.email} (${user._id}) permanently deleted from database.`);
 
     res.json({
       message: "Your StudyFlow account and all associated tasks have been permanently deleted."
     });
-  } catch (error) { next(error); }
+  } catch (error) {
+    next(error);
+  }
 }
+
+// ── Backwards compatibility stubs ───────────────────────────────────────────
+export async function requestDeleteAccount(req, res) {
+  res.json({
+    message: "Direct account deletion is active. Please enter your username/password to confirm deletion.",
+    direct: true
+  });
+}
+
+export const confirmDeleteAccount = deleteAccount;
+

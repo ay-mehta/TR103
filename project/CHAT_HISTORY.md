@@ -25,7 +25,7 @@ The **StudyFlow** full-stack MERN application is **100% complete, fully deployed
   - Signup, email verification, login, JWT token auth, and profile editing.
   - Interactive task board: CRUD operations, priority tags, category filters, and completion toggles.
   - Forgot password / reset password workflow with real-time email dispatch and verified token verification.
-  - **Account Deletion:** Two-step secure profile deletion with email verification and credential confirmation (permanently wipes user and all tasks).
+  - **Account Deletion:** Direct credential-verified account deletion (username/email + password confirmation, cascading deletion of user profile and all study tasks in MongoDB Atlas, with zero email dependencies).
 
 ---
 
@@ -132,17 +132,32 @@ c:\Users\hp\repos\TR103\
   - Replaced `CLIENT_URL` with the live Netlify URL (`https://<site>.netlify.app`).
   - Added sanitization in `getClientUrl()` to reject `*` and enforce HTTPS format.
 
-### 6. Account & Profile Deletion Feature (Email Verification + Credential Re-authentication)
-- **Implementation Goal:** Provide a secure user flow to permanently delete an account and all tasks.
+### 6. Account & Profile Deletion Feature (Direct Credential Verification & Cascade Deletion)
+- **Implementation Goal:** Provide a direct, reliable user flow to permanently delete an account and all study tasks without email delivery restrictions.
+- **Problem with Email-Based Deletion:**
+  - Cloud SMTP is blocked on cloud hosting (Render), and Resend free tier without a custom domain restricts sending strictly to the verified account owner's email address.
+  - Attempting to send deletion verification emails to arbitrary student test emails triggered `Email delivery failed due to cloud SMTP restriction`.
+- **Direct Deletion Solution:**
+  - Removed email sending requirement for account deletion entirely.
+  - Implemented direct, credential-verified account deletion: the user re-authenticates by providing their username/email and password before deletion is executed.
 - **Backend Flow:**
-  - `User.js` model updated with `deleteAccountToken` and `deleteAccountTokenExpiry`.
-  - `emailService.js` updated with `sendDeleteAccountEmail(user, token)`.
-  - `POST /api/auth/request-delete-account` (protected): Generates secure 1-hour token, saves to user, and dispatches confirmation email with link to `/delete-account?token=...`.
-  - `POST /api/auth/confirm-delete-account` (public): Validates token, verifies username/email and password against bcrypt hash, wipes all user tasks (`Task.deleteMany({ user: user._id })`), and deletes user record (`User.findByIdAndDelete(user._id)`).
+  - `POST /api/auth/delete-account` (with `optionalProtect` middleware):
+    - Validates username/email and verifies password against bcrypt hash (`user.matchPassword(password)`).
+    - Verifies match against active authenticated session if logged in.
+    - Executes cascading deletion of all tasks: `await Task.deleteMany({ user: user._id })`.
+    - Permanently deletes user document from MongoDB: `await User.findByIdAndDelete(user._id)`.
+    - Backwards-compatible aliases (`/confirm-delete-account`, `/request-delete-account`) retained to avoid stale client errors.
 - **Frontend Flow:**
-  - `Profile.jsx`: Added Danger Zone section with "Delete Account" button and confirmation modal. Displays real-time status feedback and demo fallback link.
-  - `DeleteAccount.jsx`: Dedicated confirmation page accessed via email link. Asks for username/email and password with password visibility toggle.
-  - `App.jsx` & `api.js`: Registered route `/delete-account` and API methods `requestDeleteAccount()` and `confirmDeleteAccount()`. Clears auth state and session upon deletion.
+  - `Profile.jsx`:
+    - Danger Zone "Delete Account" button immediately opens a modal on the page asking for Username/Email and Password (with visibility toggle).
+    - Submitting verifies credentials and deletes account directly via `api.deleteAccount()`.
+    - On success, terminates session via `logout()` and redirects to `/delete-account?status=deleted`.
+    - Also displays a direct link to the standalone `/delete-account` page.
+  - `DeleteAccount.jsx`:
+    - Public standalone page accessible directly at `/delete-account` (no token needed).
+    - Pre-fills username/email if user is logged in, prompts for password.
+    - Executes deletion, logs out, and displays confirmed deletion screen with a "Return to Home" button.
+  - `api.js`: Registered `deleteAccount()` endpoint.
 
 ---
 

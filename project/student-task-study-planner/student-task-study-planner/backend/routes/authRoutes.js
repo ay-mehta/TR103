@@ -3,22 +3,23 @@ import {
   register, verifyEmail, resendVerification,
   login, getMe, getProfile, updateProfile,
   changePassword, forgotPassword, resetPassword,
-  requestDeleteAccount, confirmDeleteAccount
+  deleteAccount, confirmDeleteAccount, requestDeleteAccount
 } from "../controllers/authController.js";
-import { protect } from "../middleware/authMiddleware.js";
+import { protect, optionalProtect } from "../middleware/authMiddleware.js";
 
 const router = Router();
 
-// Public
+// Public / Direct Account Operations
 router.post("/register",               register);
 router.get("/verify-email",            verifyEmail);
 router.post("/resend-verification",    resendVerification);
 router.post("/login",                  login);
 router.post("/forgot-password",        forgotPassword);
 router.post("/reset-password",         resetPassword);
-router.post("/confirm-delete-account", confirmDeleteAccount);
+router.post("/delete-account",         optionalProtect, deleteAccount);
+router.post("/confirm-delete-account", optionalProtect, confirmDeleteAccount);
 
-// Protected
+// Protected (requires active user login)
 router.get("/me",                      protect, getMe);
 router.get("/profile",                 protect, getProfile);
 router.put("/profile",                 protect, updateProfile);
